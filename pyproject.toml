@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "snrd-neo4j-kg-harvester"
+version = "0.1.0"
+description = "Headless CLI harvester for SNRD VuFind API to build a Neo4j knowledge graph"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "SNRD KG Team"}]
+dependencies = [
+  "typer>=0.12",
+  "requests>=2.32",
+  "neo4j>=5.22",
+  "python-dateutil>=2.9",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2",
+]
+
+[project.scripts]
+snrd-kg = "snrd_kg.cli:app"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100

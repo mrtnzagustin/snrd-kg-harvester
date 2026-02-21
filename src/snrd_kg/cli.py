@@ -7,6 +7,7 @@ from datetime import date
 from pathlib import Path
 
 import typer
+from dotenv import find_dotenv, load_dotenv
 
 from .api_client import ApiConfig, SnrdApiClient
 from .cypher_builder import build_constraints_cypher
@@ -15,6 +16,9 @@ from .neo4j_client import Neo4jClient, Neo4jConfig
 from .state import JsonStateStore, StateStore
 
 app = typer.Typer(help="SNRD -> Neo4j KG Harvester")
+
+# Load environment from a nearby .env file, keeping any already-exported values.
+load_dotenv(find_dotenv(usecwd=True), override=False)
 
 
 def _parse_date(value: str) -> date:
@@ -57,12 +61,12 @@ def init_neo4j(log_level: str = "INFO") -> None:
 def harvest(
     from_date: str = typer.Option(..., "--from-date"),
     until_date: str = typer.Option(..., "--until-date"),
-    lookfor: str = "*",
+    lookfor: str = typer.Option("*", "--lookfor"),
     type_: str = typer.Option("AllFields", "--type"),
     filter: list[str] = typer.Option(None, "--filter"),
     fields: list[str] = typer.Option(None, "--fields"),
     batch_size: int = typer.Option(30, "--batch-size"),
-    sort: str = "publishDate asc",
+    sort: str = typer.Option("year", "--sort"),
     only_generate: bool = typer.Option(False, "--only-generate"),
     apply: bool = typer.Option(True, "--apply/--no-apply"),
     window_size: str = typer.Option("month", "--window-size"),
@@ -140,5 +144,10 @@ def replay(
     typer.echo(json.dumps({"replayed": replayed, "from": from_window, "until": until_window}))
 
 
+def main() -> None:
+    # Disable Click's Windows glob expansion so lookfor='*' remains literal.
+    app(windows_expand_args=False)
+
+
 if __name__ == "__main__":
-    app()
+    main()

@@ -60,7 +60,7 @@ snrd-kg harvest \
   --until-date 2022-12-31 \
   --lookfor "*" \
   --type AllFields \
-  --sort "publishDate asc" \
+  --sort year \
   --batch-size 30
 ```
 

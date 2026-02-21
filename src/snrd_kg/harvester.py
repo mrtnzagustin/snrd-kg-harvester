@@ -26,7 +26,7 @@ class HarvestConfig:
     filters: list[str] | None = None
     fields: list[str] | None = None
     facets: list[str] | None = None
-    sort: str | None = "publishDate asc"
+    sort: str | None = "year"
     limit: int = 100
     page_start: int = 1
     page_end: int | None = None
@@ -44,6 +44,7 @@ class Harvester:
         self.api = api
         self.state = state
         self.neo4j = neo4j
+        self._warned_year_fallback = False
 
     def _iter_windows(self, start: date, end: date, mode: str) -> Iterable[tuple[date, date]]:
         current = start
@@ -75,8 +76,11 @@ class Harvester:
         ]
 
     def _discover_filter(self, cfg: HarvestConfig, page: int, start: date, end: date) -> tuple[str, dict[str, Any]]:
+        last_filter: str | None = None
+        last_payload: dict[str, Any] | None = None
         last_exc: Exception | None = None
         for date_filter in self._date_filter_candidates(start, end):
+            last_filter = date_filter
             try:
                 payload = self.api.search(
                     lookfor=cfg.lookfor,
@@ -88,10 +92,23 @@ class Harvester:
                     facets=cfg.facets or [],
                     sort=cfg.sort,
                 )
-                return date_filter, payload
+                last_payload = payload
+                records = self.api.extract_records(payload)
+                total = self.api.extract_total(payload)
+                LOGGER.debug(
+                    "filter_probe page=%s filter=%s records=%s total=%s",
+                    page,
+                    date_filter,
+                    len(records),
+                    total,
+                )
+                if records or (isinstance(total, int) and total > 0):
+                    return date_filter, payload
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
-                LOGGER.warning("date_filter_failed", extra={"filter": date_filter})
+                LOGGER.warning("date_filter_failed filter=%s", date_filter)
+        if last_payload is not None and last_filter is not None:
+            return last_filter, last_payload
         if last_exc:
             raise last_exc
         raise RuntimeError("Unable to discover date filter")
@@ -132,7 +149,27 @@ class Harvester:
                 if cfg.page_end is not None and page > cfg.page_end:
                     break
                 date_filter, payload = self._discover_filter(cfg, page, wnd_start, wnd_end)
+                if (
+                    not self._warned_year_fallback
+                    and cfg.window_size != "year"
+                    and date_filter.startswith("publishDate:")
+                    and date_filter.removeprefix("publishDate:").isdigit()
+                ):
+                    LOGGER.warning(
+                        "date filter fallback reached year granularity (%s); "
+                        "for less duplicate work use --window-size year",
+                        date_filter,
+                    )
+                    self._warned_year_fallback = True
                 records = self.api.extract_records(payload)
+                LOGGER.info(
+                    "window=%s page=%s filter=%s records=%s total=%s",
+                    window,
+                    page,
+                    date_filter,
+                    len(records),
+                    self.api.extract_total(payload),
+                )
                 if not records:
                     break
                 ids = self._extract_ids(records)
